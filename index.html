@@ -7,7 +7,7 @@
       body {
         margin: 0;
         overflow: hidden;
-        background-color: #ddd; /* valfri bakgrund i webbläsaren */
+        background-color: #fff; /* Vit bakgrund på hela sidan */
       }
       #ui {
         position: absolute;
@@ -178,12 +178,11 @@ och Pippi ville aldrig ha några andra.
         textCanvas.height = totalHeight;
 
         const ctx = textCanvas.getContext("2d");
-        // Transparent bakgrund – ingen rektangel
-        // (om du vill se en vit bakgrund, avkommentera dessa rader)
+        // Om du vill se en vit rektangel bakom texten:
         // ctx.fillStyle = "#ffffff";
         // ctx.fillRect(0, 0, textCanvas.width, textCanvas.height);
 
-        // Skriv text
+        // Skriv svart text
         ctx.fillStyle = "#000000";
         ctx.font = `${fontSize}px serif`;
         let y = fontSize; // startpunkt för texten
@@ -196,10 +195,9 @@ och Pippi ville aldrig ha några andra.
         const texture = new THREE.Texture(textCanvas);
         texture.needsUpdate = true;
 
-        // Skala ned/up i 3D om du vill
-        const scaleFactor = 1.0; // 1:1 px → world-unit
-        const planeWidth = pageWidth * scaleFactor;
-        const planeHeight = totalHeight * scaleFactor;
+        // Skala 1:1 px → world-unit (justera om du vill)
+        const planeWidth = pageWidth;
+        const planeHeight = totalHeight;
 
         return {
           texture,
