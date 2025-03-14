@@ -2,12 +2,12 @@
 <html lang="sv">
   <head>
     <meta charset="utf-8" />
-    <title>Vågande textsida – Vit bakgrund, svart text</title>
+    <title>Interaktiv textsida – Vågeffekt & distortion</title>
     <style>
       body {
         margin: 0;
         overflow: hidden;
-        background-color: #fff; /* Vit bakgrund på hela sidan */
+        background-color: #fff; /* Vit bakgrund */
       }
       #ui {
         position: absolute;
@@ -57,7 +57,17 @@
       let frequency = 2.0;
       let mouseX = 0, mouseY = 0;
 
-      // Texten vi ska använda (Pippi-exempel)
+      // För "drag‑distortion"
+      let isDragging = false;
+      let dragStart = { x: 0, y: 0 };
+      let dragDelta = { x: 0, y: 0 };
+      const distortionStrength = 0.2; // Justera hur mycket musdragen påverkar
+
+      // Vi sparar de ursprungliga vertexpositionerna
+      let basePositions = [];
+      let maxDist = 0; // Maxavstånd från mittpunkten (för falloff)
+
+      // Texten (Pippi‑exempel)
       const pippiText = `
 Hennes hår hade samma färg som en morot och var flätat i två hårda flätor som stod rätt ut.
 Hennes näsa hade samma fason som en mycket liten potatis, och den var alldeles prickig av fräknar.
@@ -98,22 +108,27 @@ och Pippi ville aldrig ha några andra.
         const ambientLight = new THREE.AmbientLight(0xffffff, 1);
         scene.add(ambientLight);
 
-        // Skapa textsidans textur från en canvas med word-wrap (utan extra blankrader)
+        // Skapa textsidans textur (en canvas med word-wrap, utan extra tomma rader)
         const { texture, planeWidth, planeHeight } = createTextPageTexture(pippiText);
 
-        // Skapa en plane geometry med segment för vågeffekt
+        // Skapa en PlaneGeometry med många segment (för vågeffekten)
         const segmentsX = 40;
         const segmentsY = 40;
         const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight, segmentsX, segmentsY);
 
-        // Material med textur; transparent = true (så endast texten syns)
+        // Spara ursprungliga vertexpositioner
+        basePositions = geometry.attributes.position.array.slice();
+        // Beräkna maxavstånd från centrum
+        maxDist = Math.sqrt((planeWidth / 2) ** 2 + (planeHeight / 2) ** 2);
+
+        // Material – endast text (transparent, så ingen rektangel syns)
         const material = new THREE.MeshBasicMaterial({
           map: texture,
           side: THREE.DoubleSide,
           transparent: true
         });
 
-        // Mesh – PlaneGeometry är centrerad kring (0,0,0)
+        // Skapa mesh; PlaneGeometry är centrerad kring (0,0,0)
         planeMesh = new THREE.Mesh(geometry, material);
         scene.add(planeMesh);
         planeMesh.position.set(0, 0, 0);
@@ -133,20 +148,22 @@ och Pippi ville aldrig ha några andra.
           camera.updateProjectionMatrix();
         });
 
-        // Lägg till muslyssnare för rotation
+        // Muslyssnare för global rotation och drag-distortion
         document.addEventListener("mousemove", onMouseMove, false);
+        document.addEventListener("mousedown", onMouseDown, false);
+        document.addEventListener("mouseup", onMouseUp, false);
       }
 
-      // Skapar en textsida som texture
+      // Skapar textsidans texture (canvas med word-wrap)
       function createTextPageTexture(fullText) {
-        // Ange sidans bredd i pixlar (porträttformat, lik en boksida)
+        // Ange sidbredd (porträttformat)
         const pageWidth = 400;
-        const fontSize = 20;    // i pixlar
-        const lineHeight = 28;  // i pixlar
+        const fontSize = 20;   // px
+        const lineHeight = 28; // px
 
         const paragraphs = fullText.trim().split("\n");
 
-        // Temporär canvas för att mäta texten
+        // Temporär canvas för att mäta text
         const measureCanvas = document.createElement("canvas");
         const measureCtx = measureCanvas.getContext("2d");
         measureCtx.font = `${fontSize}px serif`;
@@ -167,9 +184,10 @@ och Pippi ville aldrig ha några andra.
         textCanvas.height = totalHeight;
 
         const ctx = textCanvas.getContext("2d");
-        // Låt canvasen vara transparent – endast text syns mot den vita bakgrunden på sidan
+        // Låt canvasen vara transparent (ingen bakgrund)
         ctx.clearRect(0, 0, textCanvas.width, textCanvas.height);
 
+        // Skriv svart text med systemfont "serif"
         ctx.fillStyle = "#000000";
         ctx.font = `${fontSize}px serif`;
         let y = fontSize;
@@ -181,11 +199,7 @@ och Pippi ville aldrig ha några andra.
         const texture = new THREE.Texture(textCanvas);
         texture.needsUpdate = true;
 
-        // Använd 1:1 pixlar som world-units (justera om så önskas)
-        const planeWidth = pageWidth;
-        const planeHeight = totalHeight;
-
-        return { texture, planeWidth, planeHeight };
+        return { texture, planeWidth: pageWidth, planeHeight: totalHeight };
       }
 
       // Enkel word-wrap-funktion
@@ -208,27 +222,54 @@ och Pippi ville aldrig ha några andra.
         return lines;
       }
 
-      // Uppdatera muspositionen
+      // Uppdatera musposition och, om vi drar, uppdatera dragDelta
       function onMouseMove(event) {
         mouseX = (event.clientX / window.innerWidth) * 2 - 1;
         mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
+        if (isDragging) {
+          dragDelta.x = event.clientX - dragStart.x;
+          dragDelta.y = event.clientY - dragStart.y;
+        }
       }
 
-      // Animate-loop med både rotation och vågeffekt
+      function onMouseDown(event) {
+        isDragging = true;
+        dragStart.x = event.clientX;
+        dragStart.y = event.clientY;
+      }
+
+      function onMouseUp(event) {
+        isDragging = false;
+        dragDelta.x = 0;
+        dragDelta.y = 0;
+      }
+
+      // Animate-loop med global rotation och kombinerad våg + drag-distortion
       function animate() {
         requestAnimationFrame(animate);
         const time = performance.now() * 0.001;
 
-        // Roterar textsidan utifrån musposition
+        // Global rotation baserat på musposition (när inte drar blir dragDelta = 0)
         planeMesh.rotation.x = mouseY * 2;
         planeMesh.rotation.y = mouseX * 2;
 
-        // Applicera vågeffekt genom att modifiera varje vertices z-koordinat
+        // Uppdatera vertexpositionerna: starta från de ursprungliga positionerna (basePositions)
         const positions = planeMesh.geometry.attributes.position;
         for (let i = 0; i < positions.count; i++) {
-          const x = positions.getX(i);
-          const waveZ = Math.sin((x * 0.03 * frequency) + time) * amplitude * 20;
-          positions.setZ(i, waveZ);
+          const ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
+          const baseX = basePositions[ix];
+          const baseY = basePositions[iy];
+          // Vågeffekt i z-led
+          const waveZ = Math.sin((baseX * 0.03 * frequency) + time) * amplitude * 20;
+          // Beräkna falloff (distortion påverkar mest vid mitten)
+          const d = Math.sqrt(baseX * baseX + baseY * baseY);
+          const falloff = Math.max(0, 1 - (d / maxDist));
+          // Distortion-offset (dragDelta mäts i pixlar; justera med distortionStrength)
+          const offsetX = dragDelta.x * distortionStrength * falloff;
+          const offsetY = -dragDelta.y * distortionStrength * falloff;
+          positions.array[ix] = baseX + offsetX;
+          positions.array[iy] = baseY + offsetY;
+          positions.array[iz] = waveZ;
         }
         positions.needsUpdate = true;
 
