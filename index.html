@@ -2,7 +2,7 @@
 <html lang="sv">
   <head>
     <meta charset="utf-8" />
-    <title>3D Bokstavsvåg (Systemfont)</title>
+    <title>3D Bokstavsvåg (Systemfont, centrerad & lutad)</title>
     <style>
       body {
         margin: 0;
@@ -27,21 +27,30 @@
         display: inline-block;
         width: 80px;
       }
+      #sliders > div {
+        margin-bottom: 6px;
+      }
     </style>
   </head>
   <body>
     <div id="ui">
-      <div>
-        <label for="amplitudeSlider">Amplitude</label>
-        <input id="amplitudeSlider" type="range" min="0" max="1" step="0.01" value="0.2" />
-      </div>
-      <div>
-        <label for="frequencySlider">Frequency</label>
-        <input id="frequencySlider" type="range" min="0" max="10" step="0.1" value="2" />
+      <div id="sliders">
+        <div>
+          <label for="amplitudeSlider">Amplitude</label>
+          <input id="amplitudeSlider" type="range" min="0" max="1" step="0.01" value="0.2" />
+        </div>
+        <div>
+          <label for="frequencySlider">Frequency</label>
+          <input id="frequencySlider" type="range" min="0" max="10" step="0.1" value="2" />
+        </div>
+        <div>
+          <label for="fovSlider">FOV</label>
+          <input id="fovSlider" type="range" min="10" max="120" step="1" value="45" />
+        </div>
       </div>
     </div>
 
-    <!-- Använder valfri Three.js-version. Här r151 (ES5/UMD-varianten) -->
+    <!-- Three.js (ES5/UMD) -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.151.3/build/three.min.js"></script>
 
     <script>
@@ -59,11 +68,9 @@ De skorna hade hennes pappa köpt åt henne i Sydamerika för att hon skulle ha 
 och Pippi ville aldrig ha några andra.
       `;
 
-      // Tre globala variabler
       let scene, camera, renderer;
-
-      // Arrayer för alla "bokstavsmesh"
-      let letterMeshes = [];
+      let textGroup;            // Grupp för alla bokstäver
+      let letterMeshes = [];    // Array för bokstavsmesh
 
       // För sliders och mus
       let amplitude = 0.2;
@@ -78,7 +85,7 @@ och Pippi ville aldrig ha några andra.
         // Skapa scen och kamera
         scene = new THREE.Scene();
         camera = new THREE.PerspectiveCamera(
-          45,
+          45, // FOV
           window.innerWidth / window.innerHeight,
           0.1,
           2000
@@ -93,12 +100,19 @@ och Pippi ville aldrig ha några andra.
         renderer.setClearColor(0xffffff, 1); // Vit bakgrund
         document.body.appendChild(renderer.domElement);
 
-        // Ljus (frivilligt)
+        // Ljus
         const ambientLight = new THREE.AmbientLight(0xffffff, 1);
         scene.add(ambientLight);
 
-        // Skapa bokstäver som plane-texturer
+        // Grupp som håller all text
+        textGroup = new THREE.Group();
+        scene.add(textGroup);
+
+        // Skapa bokstäver som plane-texturer (systemfont)
         createTextPlanes();
+
+        // Centrera, rotera och skala gruppen
+        centerAndTiltText();
 
         // Event: resize
         window.addEventListener("resize", onWindowResize, false);
@@ -109,6 +123,10 @@ och Pippi ville aldrig ha några andra.
         });
         document.getElementById("frequencySlider").addEventListener("input", (e) => {
           frequency = parseFloat(e.target.value);
+        });
+        document.getElementById("fovSlider").addEventListener("input", (e) => {
+          camera.fov = parseFloat(e.target.value);
+          camera.updateProjectionMatrix();
         });
 
         // Musposition
@@ -121,10 +139,10 @@ och Pippi ville aldrig ha några andra.
        */
       function createTextPlanes() {
         const lines = pippiText.split("\n");
-        const fontSize = 40;  // i pixlar (canvas)
+        const fontSize = 40;   // i pixlar (Canvas)
         const lineHeight = 50; // avstånd mellan rader i 3D
 
-        let yOffset = 0; // för att placera raderna
+        let yOffset = 0;
 
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i].trim();
@@ -142,64 +160,80 @@ och Pippi ville aldrig ha några andra.
               continue;
             }
 
-            // 1) Skapa en liten canvas
+            // 1) Skapa en liten canvas för bokstaven
             const canvas = document.createElement("canvas");
             const ctx = canvas.getContext("2d");
 
-            // Tillfällig storlek först, för att mäta textbredd
             ctx.font = `${fontSize}px serif`;
             const metrics = ctx.measureText(char);
             const textWidth = Math.ceil(metrics.width);
-            const textHeight = fontSize; // ungefär, ev. + lite marginal
+            const textHeight = fontSize; // ungefär (kan öka vid behov)
 
-            // Justera canvasstorlek till texten
             canvas.width = textWidth;
             canvas.height = textHeight;
 
-            // Rita bokstaven på canvas
+            // Rita bokstaven
             ctx.font = `${fontSize}px serif`;
             ctx.fillStyle = "#000"; // svart text
-            // Baslinjen i canvas är i nedre kanten, därför justerar vi y med fontSize
-            ctx.fillText(char, 0, fontSize * 0.8);
+            ctx.fillText(char, 0, fontSize * 0.8); // lite nedflyttning
 
             // 2) Skapa en Texture från canvas
             const texture = new THREE.Texture(canvas);
             texture.needsUpdate = true;
 
-            // 3) PlaneGeometry i 3D, anpassad efter textstorlek
-            //    Men vi kan skala ner storleken så att texten inte blir för stor i 3D
-            const scaleFactor = 0.4; // justera för att få lagom storlek
+            // 3) PlaneGeometry
+            const scaleFactor = 0.4; // storlek i 3D
             const planeWidth = textWidth * scaleFactor;
             const planeHeight = textHeight * scaleFactor;
             const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
 
             const material = new THREE.MeshBasicMaterial({
               map: texture,
-              transparent: true, // så att bakgrunden i canvasen inte syns (om den är blank)
+              transparent: true, // bakgrund blir genomskinlig
             });
 
             const mesh = new THREE.Mesh(geometry, material);
 
-            // Spara originalposition
+            // Originalposition
             mesh.userData = {
               originalX: xOffset,
               originalY: yOffset,
             };
 
-            // Placera bokstaven i scenen
+            // Placera bokstaven i gruppen
             mesh.position.set(xOffset, yOffset, 0);
-            scene.add(mesh);
+            textGroup.add(mesh);
             letterMeshes.push(mesh);
 
-            // Flytta xOffset för nästa bokstav
-            xOffset += planeWidth + 5; // lite mellanrum
+            // Nästa bokstav
+            xOffset += planeWidth + 5;
           }
-
           // Nästa rad
           yOffset -= lineHeight;
         }
 
         console.log("Antal bokstavsmesh:", letterMeshes.length);
+      }
+
+      /**
+       * Centrerar textgruppen i (0,0,0), roterar och skalar ned den
+       * så att den hamnar ungefär i mitten och lutar i perspektivet.
+       */
+      function centerAndTiltText() {
+        // 1) Beräkna bounding box för hela textGroup
+        const box = new THREE.Box3().setFromObject(textGroup);
+        const center = box.getCenter(new THREE.Vector3());
+
+        // 2) Flytta gruppen så att den centreras runt (0,0,0)
+        textGroup.position.x = -center.x;
+        textGroup.position.y = -center.y;
+
+        // 3) Rotera gruppen för en sned 3D-effekt (justera som du vill)
+        textGroup.rotation.x = -0.3; // Luta "framåt"
+        textGroup.rotation.y = 0.2;  // Liten vridning i sidled
+
+        // 4) Skala ned
+        textGroup.scale.set(0.7, 0.7, 0.7);
       }
 
       function onWindowResize() {
@@ -215,20 +249,20 @@ och Pippi ville aldrig ha några andra.
 
       function animate() {
         requestAnimationFrame(animate);
-
         const time = performance.now() * 0.001;
 
-        // Animerar bokstäverna
+        // Animerar bokstäverna i en vågrörelse
         letterMeshes.forEach((mesh, index) => {
           const { originalX, originalY } = mesh.userData;
 
-          // Vågeffekt i Z-led
+          // Sinusvåg i Z-led
           const wave = Math.sin(index * 0.1 * frequency + time) * amplitude * 20;
 
-          // Musberoende offset i X/Y
+          // Musberoende offset
           const mouseInfluenceX = mouseX * 10;
           const mouseInfluenceY = mouseY * 10;
 
+          // Sätt position (i gruppens lokala koordinater)
           mesh.position.x = originalX + mouseInfluenceX;
           mesh.position.y = originalY + mouseInfluenceY;
           mesh.position.z = wave;
