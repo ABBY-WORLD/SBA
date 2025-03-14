@@ -7,7 +7,7 @@
       body {
         margin: 0;
         overflow: hidden;
-        background-color: #000; /* Mörk bakgrund */
+        background-color: #fff; /* Vit bakgrund */
       }
       canvas {
         display: block;
@@ -16,10 +16,10 @@
         position: absolute;
         top: 10px;
         left: 10px;
-        color: #fff;
+        color: #000; /* Svart text i UI */
         z-index: 999;
         font-family: sans-serif;
-        background: rgba(0, 0, 0, 0.3);
+        background: rgba(255, 255, 255, 0.7);
         padding: 10px;
         border-radius: 4px;
       }
@@ -41,12 +41,13 @@
       </div>
     </div>
 
-    <!-- Three.js -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
-    <!-- Loader för font-filer -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/examples/js/loaders/FontLoader.js"></script>
-    <!-- Exempel på font (helvetiker_bold) -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/examples/js/loaders/TextGeometry.js"></script>
+    <!-- 
+      Använder version 0.149.0 för att undvika
+      "THREE.FontLoader is not a constructor"-felet.
+    -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.149.0/examples/js/loaders/FontLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.149.0/examples/js/loaders/TextGeometry.js"></script>
 
     <script>
       // Texten du vill använda
@@ -93,18 +94,18 @@ och Pippi ville aldrig ha några andra.
         renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(window.devicePixelRatio);
-        // Sätt en färg på "bakgrunden" i Three.js (canvas)
-        renderer.setClearColor(0x000000, 1);
+        // Vit bakgrund
+        renderer.setClearColor(0xffffff, 1);
         document.body.appendChild(renderer.domElement);
 
-        // Lite ljus
+        // Ljus (frivilligt, men kan vara bra för att se 3D-objekt)
         const ambientLight = new THREE.AmbientLight(0xffffff, 1);
         scene.add(ambientLight);
 
         // Ladda font
         const fontLoader = new THREE.FontLoader();
         fontLoader.load(
-          "https://cdn.jsdelivr.net/npm/three@0.150.1/examples/fonts/helvetiker_bold.typeface.json",
+          "https://cdn.jsdelivr.net/npm/three@0.149.0/examples/fonts/helvetiker_bold.typeface.json",
           function (loadedFont) {
             font = loadedFont;
             createText();
@@ -137,7 +138,7 @@ och Pippi ville aldrig ha några andra.
         // Dela upp texten i rader
         const lines = pippiText.split("\n");
 
-        let yOffset = 0; // För att placera raderna
+        let yOffset = 0;      // För att placera raderna
         const lineHeight = 12; // Avstånd mellan rader
 
         // För varje rad
@@ -154,7 +155,7 @@ och Pippi ville aldrig ha några andra.
           for (let j = 0; j < line.length; j++) {
             const char = line[j];
 
-            // Hoppa över mellanslag, eller skapa en "space-geometry" om du vill
+            // Hoppa över mellanslag eller skapa separat geometry om du vill
             if (char === " ") {
               xOffset += 4; // ungefärlig bredd på mellanslag
               continue;
@@ -167,9 +168,10 @@ och Pippi ville aldrig ha några andra.
               height: 1,
               curveSegments: 2
             });
-            geometry.computeBoundingBox(); // Viktigt för att få boundingBox-värden
+            geometry.computeBoundingBox(); // Viktigt för att boundingBox ska fungera
 
-            const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            // Svart text
+            const material = new THREE.MeshBasicMaterial({ color: 0x000000 });
             const mesh = new THREE.Mesh(geometry, material);
 
             // Originalposition (för animering)
@@ -194,7 +196,7 @@ och Pippi ville aldrig ha några andra.
           yOffset -= lineHeight;
         }
 
-        // Kolla i konsolen hur många bokstäver som skapas
+        // Se hur många bokstavsmesh som skapats
         console.log("Antal bokstavsmesh:", letterMeshes.length);
       }
 
@@ -217,7 +219,6 @@ och Pippi ville aldrig ha några andra.
 
         // Uppdatera varje bokstav
         letterMeshes.forEach((mesh, index) => {
-          // Hämta originalposition
           const { originalX, originalY } = mesh.userData;
 
           // Vågeffekt i Z-led
