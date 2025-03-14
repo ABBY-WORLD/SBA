@@ -50,9 +50,14 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.151.3/build/three.min.js"></script>
 
     <script>
-      // -------------------------------
-      // 1) Text att använda (Pippi-exempel)
-      // -------------------------------
+      // Globala variabler
+      let scene, camera, renderer;
+      let planeMesh; // Mesh för textsidan
+      let amplitude = 0.5;
+      let frequency = 2.0;
+      let mouseX = 0, mouseY = 0;
+
+      // Texten vi ska använda (Pippi-exempel)
       const pippiText = `
 Hennes hår hade samma färg som en morot och var flätat i två hårda flätor som stod rätt ut.
 Hennes näsa hade samma fason som en mycket liten potatis, och den var alldeles prickig av fräknar.
@@ -66,20 +71,9 @@ De skorna hade hennes pappa köpt åt henne i Sydamerika för att hon skulle ha 
 och Pippi ville aldrig ha några andra.
       `;
 
-      // -------------------------------
-      // 2) Globala variabler
-      // -------------------------------
-      let scene, camera, renderer;
-      let planeMesh; // Mesh för textsidan
-      let amplitude = 0.5;
-      let frequency = 2.0;
-
       init();
       animate();
 
-      // -------------------------------
-      // 3) Initieringsfunktion
-      // -------------------------------
       function init() {
         // Skapa scen
         scene = new THREE.Scene();
@@ -97,34 +91,34 @@ och Pippi ville aldrig ha några andra.
         // Renderer med vit clearColor
         renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setClearColor(0xffffff, 1); // Vit bakgrund i canvasen
+        renderer.setClearColor(0xffffff, 1);
         document.body.appendChild(renderer.domElement);
 
         // Ambient ljus
         const ambientLight = new THREE.AmbientLight(0xffffff, 1);
         scene.add(ambientLight);
 
-        // Skapa textsidans textur (en canvas med word-wrap)
+        // Skapa textsidans textur från en canvas med word-wrap (utan extra blankrader)
         const { texture, planeWidth, planeHeight } = createTextPageTexture(pippiText);
 
-        // Skapa en plane geometry med många segment för vågeffekt
+        // Skapa en plane geometry med segment för vågeffekt
         const segmentsX = 40;
         const segmentsY = 40;
         const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight, segmentsX, segmentsY);
 
-        // Material med textur; transparent = true (så bara texten syns)
+        // Material med textur; transparent = true (så endast texten syns)
         const material = new THREE.MeshBasicMaterial({
           map: texture,
           side: THREE.DoubleSide,
           transparent: true
         });
 
-        // Mesh – PlaneGeometry är centrerad kring (0,0,0) vilket ger rotation kring mitten
+        // Mesh – PlaneGeometry är centrerad kring (0,0,0)
         planeMesh = new THREE.Mesh(geometry, material);
         scene.add(planeMesh);
         planeMesh.position.set(0, 0, 0);
 
-        // Event: Hantera fönsterstorlek
+        // Event: fönsterstorlek
         window.addEventListener("resize", onWindowResize);
 
         // Sliders
@@ -138,50 +132,44 @@ och Pippi ville aldrig ha några andra.
           camera.fov = parseFloat(e.target.value);
           camera.updateProjectionMatrix();
         });
+
+        // Lägg till muslyssnare för rotation
+        document.addEventListener("mousemove", onMouseMove, false);
       }
 
-      // -------------------------------
-      // 4) Skapa textsidans texture (canvas med word-wrap)
-      // -------------------------------
+      // Skapar en textsida som texture
       function createTextPageTexture(fullText) {
-        // Ange "sidbredd" i pixlar för ett porträttformat (liknar en stående boksida)
+        // Ange sidans bredd i pixlar (porträttformat, lik en boksida)
         const pageWidth = 400;
         const fontSize = 20;    // i pixlar
         const lineHeight = 28;  // i pixlar
 
-        // Dela upp texten i stycken
         const paragraphs = fullText.trim().split("\n");
 
-        // Skapa en temporär canvas för att mäta textens bredd
+        // Temporär canvas för att mäta texten
         const measureCanvas = document.createElement("canvas");
         const measureCtx = measureCanvas.getContext("2d");
         measureCtx.font = `${fontSize}px serif`;
 
-        // Word-wrap: dela upp varje stycke i rader baserat på maxbredd (pageWidth)
         let wrappedLines = [];
         paragraphs.forEach((para) => {
           if (!para.trim()) {
-            wrappedLines.push("");
+            // Ta inte med tomma rader
             return;
           }
           const lines = wrapText(para.trim(), pageWidth, measureCtx);
           wrappedLines = wrappedLines.concat(lines);
-          wrappedLines.push(""); // tom rad efter varje stycke
         });
 
-        // Total höjd
         const totalHeight = wrappedLines.length * lineHeight;
-
-        // Skapa den riktiga canvasen
         const textCanvas = document.createElement("canvas");
         textCanvas.width = pageWidth;
         textCanvas.height = totalHeight;
 
         const ctx = textCanvas.getContext("2d");
-        // Låt canvasen vara transparent (inga fillRect) så att bara texten syns
+        // Låt canvasen vara transparent – endast text syns mot den vita bakgrunden på sidan
         ctx.clearRect(0, 0, textCanvas.width, textCanvas.height);
 
-        // Skriv svart text med systemfont "serif"
         ctx.fillStyle = "#000000";
         ctx.font = `${fontSize}px serif`;
         let y = fontSize;
@@ -190,20 +178,17 @@ och Pippi ville aldrig ha några andra.
           y += lineHeight;
         });
 
-        // Skapa Three.js-textur från canvasen
         const texture = new THREE.Texture(textCanvas);
         texture.needsUpdate = true;
 
-        // Använd 1:1 pixlar som world units (justera om du vill)
+        // Använd 1:1 pixlar som world-units (justera om så önskas)
         const planeWidth = pageWidth;
         const planeHeight = totalHeight;
 
         return { texture, planeWidth, planeHeight };
       }
 
-      // -------------------------------
-      // 5) Funktion för word-wrap
-      // -------------------------------
+      // Enkel word-wrap-funktion
       function wrapText(text, maxWidth, ctx) {
         const words = text.split(/\s+/);
         let lines = [];
@@ -223,18 +208,25 @@ och Pippi ville aldrig ha några andra.
         return lines;
       }
 
-      // -------------------------------
-      // 6) Animate-loop med vågeffekt
-      // -------------------------------
+      // Uppdatera muspositionen
+      function onMouseMove(event) {
+        mouseX = (event.clientX / window.innerWidth) * 2 - 1;
+        mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
+      }
+
+      // Animate-loop med både rotation och vågeffekt
       function animate() {
         requestAnimationFrame(animate);
-        const time = performance.now() * 0.001; // tid i sekunder
+        const time = performance.now() * 0.001;
 
-        // Loop genom alla vertices i planeMesh och justera z-koordinaten
+        // Roterar textsidan utifrån musposition
+        planeMesh.rotation.x = mouseY * 2;
+        planeMesh.rotation.y = mouseX * 2;
+
+        // Applicera vågeffekt genom att modifiera varje vertices z-koordinat
         const positions = planeMesh.geometry.attributes.position;
         for (let i = 0; i < positions.count; i++) {
           const x = positions.getX(i);
-          // En enkel sinusvåg baserad på x-värde, frekvens och tid
           const waveZ = Math.sin((x * 0.03 * frequency) + time) * amplitude * 20;
           positions.setZ(i, waveZ);
         }
@@ -243,9 +235,6 @@ och Pippi ville aldrig ha några andra.
         renderer.render(scene, camera);
       }
 
-      // -------------------------------
-      // 7) Hantera fönsterstorlek
-      // -------------------------------
       function onWindowResize() {
         camera.aspect = window.innerWidth / window.innerHeight;
         camera.updateProjectionMatrix();
