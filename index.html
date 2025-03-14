@@ -2,7 +2,7 @@
 <html lang="sv">
   <head>
     <meta charset="utf-8" />
-    <title>3D Bokstavsvåg (Systemfont, centrerad & lutad)</title>
+    <title>3D Bokstavsvåg (Systemfont, musrotation)</title>
     <style>
       body {
         margin: 0;
@@ -50,7 +50,7 @@
       </div>
     </div>
 
-    <!-- Three.js (ES5/UMD) -->
+    <!-- Three.js -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.151.3/build/three.min.js"></script>
 
     <script>
@@ -85,7 +85,7 @@ och Pippi ville aldrig ha några andra.
         // Skapa scen och kamera
         scene = new THREE.Scene();
         camera = new THREE.PerspectiveCamera(
-          45, // FOV
+          45, // initial FOV
           window.innerWidth / window.innerHeight,
           0.1,
           2000
@@ -111,8 +111,8 @@ och Pippi ville aldrig ha några andra.
         // Skapa bokstäver som plane-texturer (systemfont)
         createTextPlanes();
 
-        // Centrera, rotera och skala gruppen
-        centerAndTiltText();
+        // Centrera och skala ned gruppen (utan att rotera)
+        centerText();
 
         // Event: resize
         window.addEventListener("resize", onWindowResize, false);
@@ -140,7 +140,7 @@ och Pippi ville aldrig ha några andra.
       function createTextPlanes() {
         const lines = pippiText.split("\n");
         const fontSize = 40;   // i pixlar (Canvas)
-        const lineHeight = 40; // avstånd mellan rader i 3D
+        const lineHeight = 40; // RADAVSTÅND nu 40 (tidigare 50)
 
         let yOffset = 0;
 
@@ -167,7 +167,7 @@ och Pippi ville aldrig ha några andra.
             ctx.font = `${fontSize}px serif`;
             const metrics = ctx.measureText(char);
             const textWidth = Math.ceil(metrics.width);
-            const textHeight = fontSize; // ungefär (kan öka vid behov)
+            const textHeight = fontSize;
 
             canvas.width = textWidth;
             canvas.height = textHeight;
@@ -175,7 +175,7 @@ och Pippi ville aldrig ha några andra.
             // Rita bokstaven
             ctx.font = `${fontSize}px serif`;
             ctx.fillStyle = "#000"; // svart text
-            ctx.fillText(char, 0, fontSize * 0.8); // lite nedflyttning
+            ctx.fillText(char, 0, fontSize * 0.8);
 
             // 2) Skapa en Texture från canvas
             const texture = new THREE.Texture(canvas);
@@ -216,23 +216,14 @@ och Pippi ville aldrig ha några andra.
       }
 
       /**
-       * Centrerar textgruppen i (0,0,0), roterar och skalar ned den
-       * så att den hamnar ungefär i mitten och lutar i perspektivet.
+       * Centrerar textgruppen i (0,0,0) och skalar ned den lite
+       * utan att sätta en initial rotation (vi roterar med musen istället).
        */
-      function centerAndTiltText() {
-        // 1) Beräkna bounding box för hela textGroup
+      function centerText() {
         const box = new THREE.Box3().setFromObject(textGroup);
         const center = box.getCenter(new THREE.Vector3());
-
-        // 2) Flytta gruppen så att den centreras runt (0,0,0)
         textGroup.position.x = -center.x;
         textGroup.position.y = -center.y;
-
-        // 3) Rotera gruppen för en sned 3D-effekt (justera som du vill)
-        textGroup.rotation.x = -0.3; // Luta "framåt"
-        textGroup.rotation.y = 0.2;  // Liten vridning i sidled
-
-        // 4) Skala ned
         textGroup.scale.set(0.7, 0.7, 0.7);
       }
 
@@ -243,6 +234,7 @@ och Pippi ville aldrig ha några andra.
       }
 
       function onMouseMove(event) {
+        // Normalisera musposition till -1..1
         mouseX = (event.clientX / window.innerWidth) * 2 - 1;
         mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
       }
@@ -251,18 +243,22 @@ och Pippi ville aldrig ha några andra.
         requestAnimationFrame(animate);
         const time = performance.now() * 0.001;
 
-        // Animerar bokstäverna i en vågrörelse
+        // 1) Rotera hela textGroup baserat på musen
+        //    Känn dig fri att justera multiplikatorerna för att få lagom rotation.
+        textGroup.rotation.x = mouseY * 2;
+        textGroup.rotation.y = mouseX * 2;
+        // Om du vill rotera i Z-led också:
+        // textGroup.rotation.z = (mouseX + mouseY) * 1.0;
+
+        // 2) Animerar bokstäverna i en vågrörelse (AMPLITUD * 40 = dubbelt så stor mot tidigare 20)
         letterMeshes.forEach((mesh, index) => {
           const { originalX, originalY } = mesh.userData;
-
-          // Sinusvåg i Z-led
           const wave = Math.sin(index * 0.1 * frequency + time) * amplitude * 40;
 
-          // Musberoende offset
+          // Musberoende offset i X/Y (valfritt, kan justeras)
           const mouseInfluenceX = mouseX * 10;
           const mouseInfluenceY = mouseY * 10;
 
-          // Sätt position (i gruppens lokala koordinater)
           mesh.position.x = originalX + mouseInfluenceX;
           mesh.position.y = originalY + mouseInfluenceY;
           mesh.position.z = wave;
