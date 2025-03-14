@@ -2,21 +2,17 @@
 <html lang="sv">
   <head>
     <meta charset="utf-8" />
-    <title>3D Bokstavsvåg (Systemfont, musrotation)</title>
+    <title>Hel textsida som våg (porträttformat, transparent)</title>
     <style>
       body {
         margin: 0;
         overflow: hidden;
-        background-color: #fff; /* Vit bakgrund */
-      }
-      canvas {
-        display: block;
+        background-color: #ddd; /* valfri bakgrund i webbläsaren */
       }
       #ui {
         position: absolute;
         top: 10px;
         left: 10px;
-        color: #000; /* Svart text i UI */
         z-index: 999;
         font-family: sans-serif;
         background: rgba(255, 255, 255, 0.7);
@@ -37,7 +33,7 @@
       <div id="sliders">
         <div>
           <label for="amplitudeSlider">Amplitude</label>
-          <input id="amplitudeSlider" type="range" min="0" max="1" step="0.01" value="0.2" />
+          <input id="amplitudeSlider" type="range" min="0" max="2" step="0.01" value="0.5" />
         </div>
         <div>
           <label for="frequencySlider">Frequency</label>
@@ -54,7 +50,9 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.151.3/build/three.min.js"></script>
 
     <script>
-      // Texten du vill använda (Pippi-exempel)
+      // ------------------------------------------------
+      // 1) Text att använda
+      // ------------------------------------------------
       const pippiText = `
 Hennes hår hade samma färg som en morot och var flätat i två hårda flätor som stod rätt ut.
 Hennes näsa hade samma fason som en mycket liten potatis, och den var alldeles prickig av fräknar.
@@ -68,19 +66,20 @@ De skorna hade hennes pappa köpt åt henne i Sydamerika för att hon skulle ha 
 och Pippi ville aldrig ha några andra.
       `;
 
+      // ------------------------------------------------
+      // 2) Globala variabler
+      // ------------------------------------------------
       let scene, camera, renderer;
-      let textGroup;            // Grupp för alla bokstäver
-      let letterMeshes = [];    // Array för bokstavsmesh
-
-      // För sliders och mus
-      let amplitude = 0.2;
+      let planeMesh; // planet med hela textsidan
+      let amplitude = 0.5;
       let frequency = 2.0;
-      let mouseX = 0;
-      let mouseY = 0;
 
       init();
       animate();
 
+      // ------------------------------------------------
+      // 3) Initieringsfunktion
+      // ------------------------------------------------
       function init() {
         // Skapa scen och kamera
         scene = new THREE.Scene();
@@ -90,32 +89,43 @@ och Pippi ville aldrig ha några andra.
           0.1,
           2000
         );
-        camera.position.set(0, 0, 800);
+        camera.position.set(0, 0, 600);
         camera.lookAt(scene.position);
 
         // Renderer
         renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(window.devicePixelRatio);
-        renderer.setClearColor(0xffffff, 1); // Vit bakgrund
         document.body.appendChild(renderer.domElement);
 
-        // Ljus
+        // Ljus (frivilligt)
         const ambientLight = new THREE.AmbientLight(0xffffff, 1);
         scene.add(ambientLight);
 
-        // Grupp som håller all text
-        textGroup = new THREE.Group();
-        scene.add(textGroup);
+        // Skapa en canvas med ordentlig word-wrap för att efterlikna en bok-/tidningssida
+        const { texture, planeWidth, planeHeight } = createTextPageTexture(pippiText);
 
-        // Skapa bokstäver som plane-texturer (systemfont)
-        createTextPlanes();
+        // Skapa en plane geometry med segment för en vågform
+        // Öka segmentsX/segmentsY för mjukare våg
+        const segmentsX = 40;
+        const segmentsY = 40;
+        const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight, segmentsX, segmentsY);
 
-        // Centrera och skala ned gruppen (utan att rotera)
-        centerText();
+        // Material med transparent bakgrund (endast text)
+        const material = new THREE.MeshBasicMaterial({
+          map: texture,
+          side: THREE.DoubleSide,
+          transparent: true
+        });
+
+        // Mesh
+        planeMesh = new THREE.Mesh(geometry, material);
+        scene.add(planeMesh);
+
+        // (0,0,0) är mittpunkten av planeGeometry → rotation sker runt centrum
+        planeMesh.position.set(0, 0, 0);
 
         // Event: resize
-        window.addEventListener("resize", onWindowResize, false);
+        window.addEventListener("resize", onWindowResize);
 
         // Sliders
         document.getElementById("amplitudeSlider").addEventListener("input", (e) => {
@@ -128,143 +138,125 @@ och Pippi ville aldrig ha några andra.
           camera.fov = parseFloat(e.target.value);
           camera.updateProjectionMatrix();
         });
-
-        // Musposition
-        document.addEventListener("mousemove", onMouseMove, false);
       }
 
-      /**
-       * Skapar plane-geometry för varje bokstav genom att rita bokstaven på en canvas
-       * med systemfont (t.ex. "serif"), sedan göra en Texture av det.
-       */
-      function createTextPlanes() {
-        const lines = pippiText.split("\n");
-        const fontSize = 40;   // i pixlar (Canvas)
-        const lineHeight = 40; // RADAVSTÅND nu 40 (tidigare 50)
+      // ------------------------------------------------
+      // 4) Skapa en "sida" (canvas) med word-wrap
+      // ------------------------------------------------
+      function createTextPageTexture(fullText) {
+        // Sätt "sidbredd" i pixlar (bokuppslag i porträtt)
+        const pageWidth = 400;  // Justera efter smak
+        const fontSize = 20;    // px
+        const lineHeight = 28;  // px
 
-        let yOffset = 0;
+        // Dela upp texten i stycken
+        const paragraphs = fullText.trim().split("\n");
 
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i].trim();
-          if (line.length === 0) {
-            yOffset -= lineHeight;
-            continue;
+        // Temporär canvas för att mäta text
+        const measureCanvas = document.createElement("canvas");
+        const measureCtx = measureCanvas.getContext("2d");
+        measureCtx.font = `${fontSize}px serif`;
+
+        // Word-wrapa styckena
+        let wrappedLines = [];
+        paragraphs.forEach((para) => {
+          if (!para.trim()) {
+            // tom rad
+            wrappedLines.push("");
+            return;
           }
+          const lines = wrapText(para.trim(), pageWidth, measureCtx);
+          wrappedLines = wrappedLines.concat(lines);
+          wrappedLines.push(""); // blank rad efter varje stycke
+        });
 
-          let xOffset = 0;
+        // Räkna ut total höjd
+        const totalHeight = wrappedLines.length * lineHeight;
+        // Skapa den "riktiga" canvasen
+        const textCanvas = document.createElement("canvas");
+        textCanvas.width = pageWidth;
+        textCanvas.height = totalHeight;
 
-          for (let j = 0; j < line.length; j++) {
-            const char = line[j];
-            if (char === " ") {
-              xOffset += 20; // ungefärlig bredd på mellanslag
-              continue;
-            }
+        const ctx = textCanvas.getContext("2d");
+        // Transparent bakgrund – ingen rektangel
+        // (om du vill se en vit bakgrund, avkommentera dessa rader)
+        // ctx.fillStyle = "#ffffff";
+        // ctx.fillRect(0, 0, textCanvas.width, textCanvas.height);
 
-            // 1) Skapa en liten canvas för bokstaven
-            const canvas = document.createElement("canvas");
-            const ctx = canvas.getContext("2d");
+        // Skriv text
+        ctx.fillStyle = "#000000";
+        ctx.font = `${fontSize}px serif`;
+        let y = fontSize; // startpunkt för texten
+        wrappedLines.forEach((line) => {
+          ctx.fillText(line, 0, y);
+          y += lineHeight;
+        });
 
-            ctx.font = `${fontSize}px serif`;
-            const metrics = ctx.measureText(char);
-            const textWidth = Math.ceil(metrics.width);
-            const textHeight = fontSize;
+        // Skapa Three.js-textur
+        const texture = new THREE.Texture(textCanvas);
+        texture.needsUpdate = true;
 
-            canvas.width = textWidth;
-            canvas.height = textHeight;
+        // Skala ned/up i 3D om du vill
+        const scaleFactor = 1.0; // 1:1 px → world-unit
+        const planeWidth = pageWidth * scaleFactor;
+        const planeHeight = totalHeight * scaleFactor;
 
-            // Rita bokstaven
-            ctx.font = `${fontSize}px serif`;
-            ctx.fillStyle = "#000"; // svart text
-            ctx.fillText(char, 0, fontSize * 0.8);
+        return {
+          texture,
+          planeWidth,
+          planeHeight
+        };
+      }
 
-            // 2) Skapa en Texture från canvas
-            const texture = new THREE.Texture(canvas);
-            texture.needsUpdate = true;
+      // ------------------------------------------------
+      // 5) Word-wrap-funktion
+      // ------------------------------------------------
+      function wrapText(text, maxWidth, ctx) {
+        const words = text.split(/\s+/);
+        let lines = [];
+        let currentLine = words[0];
 
-            // 3) PlaneGeometry
-            const scaleFactor = 0.4; // storlek i 3D
-            const planeWidth = textWidth * scaleFactor;
-            const planeHeight = textHeight * scaleFactor;
-            const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
-
-            const material = new THREE.MeshBasicMaterial({
-              map: texture,
-              transparent: true, // bakgrund blir genomskinlig
-            });
-
-            const mesh = new THREE.Mesh(geometry, material);
-
-            // Originalposition
-            mesh.userData = {
-              originalX: xOffset,
-              originalY: yOffset,
-            };
-
-            // Placera bokstaven i gruppen
-            mesh.position.set(xOffset, yOffset, 0);
-            textGroup.add(mesh);
-            letterMeshes.push(mesh);
-
-            // Nästa bokstav
-            xOffset += planeWidth + 5;
+        for (let i = 1; i < words.length; i++) {
+          const testLine = currentLine + " " + words[i];
+          const testWidth = ctx.measureText(testLine).width;
+          if (testWidth > maxWidth) {
+            lines.push(currentLine);
+            currentLine = words[i];
+          } else {
+            currentLine = testLine;
           }
-          // Nästa rad
-          yOffset -= lineHeight;
         }
-
-        console.log("Antal bokstavsmesh:", letterMeshes.length);
+        lines.push(currentLine);
+        return lines;
       }
 
-      /**
-       * Centrerar textgruppen i (0,0,0) och skalar ned den lite
-       * utan att sätta en initial rotation (vi roterar med musen istället).
-       */
-      function centerText() {
-        const box = new THREE.Box3().setFromObject(textGroup);
-        const center = box.getCenter(new THREE.Vector3());
-        textGroup.position.x = -center.x;
-        textGroup.position.y = -center.y;
-        textGroup.scale.set(0.7, 0.7, 0.7);
-      }
-
-      function onWindowResize() {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-      }
-
-      function onMouseMove(event) {
-        // Normalisera musposition till -1..1
-        mouseX = (event.clientX / window.innerWidth) * 2 - 1;
-        mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
-      }
-
+      // ------------------------------------------------
+      // 6) Animate-loop (våg)
+      // ------------------------------------------------
       function animate() {
         requestAnimationFrame(animate);
         const time = performance.now() * 0.001;
 
-        // 1) Rotera hela textGroup baserat på musen
-        //    Känn dig fri att justera multiplikatorerna för att få lagom rotation.
-        textGroup.rotation.x = mouseY * 2;
-        textGroup.rotation.y = mouseX * 2;
-        // Om du vill rotera i Z-led också:
-        // textGroup.rotation.z = (mouseX + mouseY) * 1.0;
-
-        // 2) Animerar bokstäverna i en vågrörelse (AMPLITUD * 40 = dubbelt så stor mot tidigare 20)
-        letterMeshes.forEach((mesh, index) => {
-          const { originalX, originalY } = mesh.userData;
-          const wave = Math.sin(index * 0.1 * frequency + time) * amplitude * 40;
-
-          // Musberoende offset i X/Y (valfritt, kan justeras)
-          const mouseInfluenceX = mouseX * 10;
-          const mouseInfluenceY = mouseY * 10;
-
-          mesh.position.x = originalX + mouseInfluenceX;
-          mesh.position.y = originalY + mouseInfluenceY;
-          mesh.position.z = wave;
-        });
+        // Justera varje vertex i plane-geom
+        const positions = planeMesh.geometry.attributes.position;
+        for (let i = 0; i < positions.count; i++) {
+          const x = positions.getX(i);
+          // Exempel på våg i x-led
+          const waveZ = Math.sin((x * 0.03 * frequency) + time) * amplitude * 20;
+          positions.setZ(i, waveZ);
+        }
+        positions.needsUpdate = true;
 
         renderer.render(scene, camera);
+      }
+
+      // ------------------------------------------------
+      // 7) Hantera fönsterstorlek
+      // ------------------------------------------------
+      function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
       }
     </script>
   </body>
