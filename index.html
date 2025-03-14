@@ -4,10 +4,14 @@
     <meta charset="utf-8" />
     <title>3D Bokstavsvåg</title>
     <style>
-      body { margin: 0; overflow: hidden; }
-      canvas { display: block; }
-
-      /* En enkel UI för sliders */
+      body {
+        margin: 0;
+        overflow: hidden;
+        background-color: #000; /* Mörk bakgrund */
+      }
+      canvas {
+        display: block;
+      }
       #ui {
         position: absolute;
         top: 10px;
@@ -15,11 +19,10 @@
         color: #fff;
         z-index: 999;
         font-family: sans-serif;
-        background: rgba(0,0,0,0.3);
+        background: rgba(0, 0, 0, 0.3);
         padding: 10px;
         border-radius: 4px;
       }
-
       label {
         display: inline-block;
         width: 80px;
@@ -38,7 +41,7 @@
       </div>
     </div>
 
-    <!-- Ladda ner eller peka om till valfri CDN för Three.js -->
+    <!-- Three.js -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
     <!-- Loader för font-filer -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/examples/js/loaders/FontLoader.js"></script>
@@ -46,7 +49,7 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/examples/js/loaders/TextGeometry.js"></script>
 
     <script>
-      // Här är texten du vill använda
+      // Texten du vill använda
       const pippiText = `
 Hennes hår hade samma färg som en morot och var flätat i två hårda flätor som stod rätt ut.
 Hennes näsa hade samma fason som en mycket liten potatis, och den var alldeles prickig av fräknar.
@@ -61,8 +64,8 @@ och Pippi ville aldrig ha några andra.
       `;
 
       let scene, camera, renderer;
-      let font;          // Font laddas in
-      let letterMeshes = [];  // Array för alla bokstavsmesh
+      let font;                 // Font laddas in
+      let letterMeshes = [];    // Array för alla bokstavsmesh
 
       // För sliders och mus
       let amplitude = 0.2;
@@ -76,21 +79,26 @@ och Pippi ville aldrig ha några andra.
       function init() {
         // Skapa scen och kamera
         scene = new THREE.Scene();
+
         camera = new THREE.PerspectiveCamera(
-          45,               // Field of View
+          45, // Field of View
           window.innerWidth / window.innerHeight, // Aspekt
-          0.1,              // near
-          1000              // far
+          0.1, // near
+          1000 // far
         );
-        camera.position.set(0, 0, 200);
+        camera.position.set(0, 0, 300);
+        camera.lookAt(scene.position);
 
         // Renderer
         renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        // Sätt en färg på "bakgrunden" i Three.js (canvas)
+        renderer.setClearColor(0x000000, 1);
         document.body.appendChild(renderer.domElement);
 
-        // Lite ljus (enkelt)
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+        // Lite ljus
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1);
         scene.add(ambientLight);
 
         // Ladda font
@@ -100,6 +108,10 @@ och Pippi ville aldrig ha några andra.
           function (loadedFont) {
             font = loadedFont;
             createText();
+          },
+          undefined,
+          function (error) {
+            console.error("Fel vid font-laddning:", error);
           }
         );
 
@@ -130,20 +142,19 @@ och Pippi ville aldrig ha några andra.
 
         // För varje rad
         for (let i = 0; i < lines.length; i++) {
-          const line = lines[i];
-          // Ta bort extra mellanslag
-          const trimmedLine = line.trim();
-          if (trimmedLine.length === 0) {
-            yOffset -= lineHeight; // tom rad
+          const line = lines[i].trim();
+          if (line.length === 0) {
+            // Tom rad
+            yOffset -= lineHeight;
             continue;
           }
 
-          // Skapa bokstavsmesh för varje tecken
           let xOffset = 0;
-          for (let j = 0; j < trimmedLine.length; j++) {
-            const char = trimmedLine[j];
+          // Loopa över varje tecken i raden
+          for (let j = 0; j < line.length; j++) {
+            const char = line[j];
 
-            // Hoppa över om det är mellanslag, eller skapa separat geometri även för mellanslag
+            // Hoppa över mellanslag, eller skapa en "space-geometry" om du vill
             if (char === " ") {
               xOffset += 4; // ungefärlig bredd på mellanslag
               continue;
@@ -156,11 +167,12 @@ och Pippi ville aldrig ha några andra.
               height: 1,
               curveSegments: 2
             });
+            geometry.computeBoundingBox(); // Viktigt för att få boundingBox-värden
 
             const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
             const mesh = new THREE.Mesh(geometry, material);
 
-            // Spara originalposition (för animering)
+            // Originalposition (för animering)
             mesh.userData = {
               originalX: xOffset,
               originalY: yOffset
@@ -174,12 +186,16 @@ och Pippi ville aldrig ha några andra.
             letterMeshes.push(mesh);
 
             // Justera xOffset för nästa bokstav
-            xOffset += geometry.boundingBox.max.x - geometry.boundingBox.min.x + 1;
+            const width = geometry.boundingBox.max.x - geometry.boundingBox.min.x;
+            xOffset += width + 1; // liten marginal
           }
 
-          // Nästa rad
+          // Gå till nästa rad
           yOffset -= lineHeight;
         }
+
+        // Kolla i konsolen hur många bokstäver som skapas
+        console.log("Antal bokstavsmesh:", letterMeshes.length);
       }
 
       function onWindowResize() {
@@ -197,16 +213,17 @@ och Pippi ville aldrig ha några andra.
       function animate() {
         requestAnimationFrame(animate);
 
-        // Uppdatera varje bokstav
         const time = performance.now() * 0.001; // tid i sekunder
+
+        // Uppdatera varje bokstav
         letterMeshes.forEach((mesh, index) => {
-          // Hämta originalpositionen
+          // Hämta originalposition
           const { originalX, originalY } = mesh.userData;
 
-          // Exempel på vågform i Z-led
+          // Vågeffekt i Z-led
           const wave = Math.sin(index * 0.1 * frequency + time) * amplitude * 10;
 
-          // Lägg in musberoende t.ex. i X-led
+          // Musberoende offset
           const mouseInfluenceX = mouseX * 5;
           const mouseInfluenceY = mouseY * 5;
 
