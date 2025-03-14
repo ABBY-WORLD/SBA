@@ -140,7 +140,7 @@ och Pippi ville aldrig ha några andra.
       function createTextPlanes() {
         const lines = pippiText.split("\n");
         const fontSize = 40;   // i pixlar (Canvas)
-        const lineHeight = 50; // avstånd mellan rader i 3D
+        const lineHeight = 40; // avstånd mellan rader i 3D
 
         let yOffset = 0;
 
@@ -256,7 +256,7 @@ och Pippi ville aldrig ha några andra.
           const { originalX, originalY } = mesh.userData;
 
           // Sinusvåg i Z-led
-          const wave = Math.sin(index * 0.1 * frequency + time) * amplitude * 20;
+          const wave = Math.sin(index * 0.1 * frequency + time) * amplitude * 40;
 
           // Musberoende offset
           const mouseInfluenceX = mouseX * 10;
